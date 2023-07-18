@@ -1,0 +1,154 @@
+#include <SFML/Graphics.hpp>
+#include <vector>
+#include <cstdlib> // for rand()
+#include <sstream>
+
+class Territory {
+public:
+    bool isClaimed;
+    int owner;
+    sf::RectangleShape shape;
+    int resources;
+
+    Territory(float x, float y, sf::Color color) : isClaimed(false), owner(-1), resources(rand() % 10 + 1) {
+        shape.setSize(sf::Vector2f(50.f, 50.f));
+        shape.setFillColor(color);
+        shape.setPosition(x, y);
+    }
+};
+
+class RichTerritory : public Territory {
+public:
+    RichTerritory(float x, float y) : Territory(x, y, sf::Color::Yellow) {
+        resources = (rand() % 10 + 1) * 2; // RichTerritory provides more resources.
+    }
+};
+
+class PoorTerritory : public Territory {
+public:
+    PoorTerritory(float x, float y) : Territory(x, y, sf::Color::Green) {
+        resources = (rand() % 10 + 1) / 2; // PoorTerritory provides fewer resources.
+    }
+};
+
+class Player {
+public:
+    int resources;
+    std::vector<Territory*> territories;
+    sf::Color color;
+
+    Player(sf::Color col) : resources(0), color(col) {}
+
+    void claim(Territory& territory) {
+        if (!territory.isClaimed) {
+            territory.isClaimed = true;
+            territory.owner = this->getID();
+            territory.shape.setFillColor(color);
+            this->territories.push_back(&territory);
+            this->resources += territory.resources;
+        }
+    }
+
+    virtual int getID() = 0;
+    virtual void makeMove(std::vector<Territory*>& territories) = 0;
+};
+
+class HumanPlayer : public Player {
+public:
+    HumanPlayer() : Player(sf::Color::Red) {}
+
+    int getID() override { return 0; }
+
+    void makeMove(std::vector<Territory*>& territories) override {
+        for (auto &territory : territories) {
+            if (territory->shape.getGlobalBounds().contains(sf::Vector2f(sf::Mouse::getPosition().x, sf::Mouse::getPosition().y))) {
+                this->claim(*territory);
+                break;
+            }
+        }
+    }
+};
+
+class AIPlayer : public Player {
+public:
+    AIPlayer() : Player(sf::Color::Blue) {}
+
+    int getID() override { return 1; }
+
+    void makeMove(std::vector<Territory*>& territories) override {
+        int choice = rand() % territories.size();
+        this->claim(*territories[choice]);
+    }
+};
+
+int main() {
+    const int NUM_TERRITORIES = 10;
+    std::vector<Territory*> territories;
+    for (int i = 0; i < NUM_TERRITORIES; i++) {
+        if (i % 2 == 0) 
+            territories.push_back(new RichTerritory(i*60, 0));
+        else
+            territories.push_back(new PoorTerritory(i*60, 0));
+    }
+
+    HumanPlayer player;
+    AIPlayer ai;
+
+    sf::Font font;
+    if (!font.loadFromFile("Arial.ttf")) // Make sure you have a file named "Arial.ttf" in your project directory.
+        return -1;
+
+    sf::Text text;
+    text.setFont(font);
+    text.setCharacterSize(24);
+    text.setFillColor(sf::Color::White);
+
+    sf::RenderWindow window(sf::VideoMode(800, 600), "Tactical Game");
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
+                window.close();
+        }
+        
+        if (sf::Mouse::isButtonPressed(sf::Mouse::Left)) {
+            player.makeMove(territories);
+        }
+
+        ai.makeMove(territories);
+        
+        window.clear();
+
+        for (const auto& territory : territories) {
+            window.draw(territory->shape);
+        }
+
+        std::stringstream ss;
+        ss << "Player resources: " << player.resources << "\nAI resources: " << ai.resources;
+        text.setString(ss.str());
+        window.draw(text);
+
+        if (player.territories.size() + ai.territories.size() == NUM_TERRITORIES) {
+            if (player.territories.size() > ai.territories.size()) {
+                text.setString("Player wins!");
+            }
+            else if (ai.territories.size() > player.territories.size()) {
+                text.setString("AI wins!");
+            }
+            else {
+                text.setString("It's a draw!");
+            }
+            window.draw(text);
+        }
+
+        window.display();
+    }
+
+    // Clean up dynamically allocated territories.
+    for (auto territory : territories) {
+        delete territory;
+    }
+
+    return 0;
+}
